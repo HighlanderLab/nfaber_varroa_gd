@@ -1,6 +1,6 @@
 # Alternative randCross which allows Poisson distribution of offspring
 randCrossDistr <- function (pop, nCrosses, balance = TRUE, parents = NULL, 
-          ignoreGender = FALSE, simParam = NULL) 
+          ignoreSexes = FALSE, simParam = NULL) 
 {
   if (is.null(simParam)) {
     simParam = get("SP", envir = .GlobalEnv)
@@ -15,19 +15,19 @@ randCrossDistr <- function (pop, nCrosses, balance = TRUE, parents = NULL,
   if (n <= 1) {
     stop("The population must contain more than 1 individual")
   }
-  if (simParam$gender == "no" | ignoreGender) {
+  if (simParam$sex == "no" | ignoreSexes) {
     crossPlan = sampHalfDialComb(n, nCrosses)
     crossPlan[, 1] = parents[crossPlan[, 1]]
     crossPlan[, 2] = parents[crossPlan[, 2]]
   }
   else {
-    female = which(pop@gender == "F" & (1:pop@nInd) %in% 
+    female = which(pop@sex == "F" & (1:pop@nInd) %in% 
                      parents)
     nFemale = length(female)
     if (nFemale == 0) {
       stop("population doesn't contain any females")
     }
-    male = which(pop@gender == "M" & (1:pop@nInd) %in% parents)
+    male = which(pop@sex == "M" & (1:pop@nInd) %in% parents)
     nMale = length(male)
     if (nMale == 0) {
       stop("population doesn't contain any males")
@@ -213,4 +213,36 @@ editHaplo <- function (pop, ind, chr, segSites, allele, haplotype = 1:pop@ploidy
   pop@pheno = PHENO
   pop@ebv = EBV
   return(pop)
+}
+
+quickHaploInbr <- function (nInd, nChr, segSites, genLen = 1, ploidy = 2L, inbred = FALSE, inbrCoef = 0.5){
+  ploidy = as.integer(ploidy)
+  nInd = as.integer(nInd)
+  nChr = as.integer(nChr)
+  segSites = as.integer(segSites)
+  if (length(segSites) == 1) 
+    segSites = rep(segSites, nChr)
+  if (length(genLen) == 1) 
+    genLen = rep(genLen, nChr)
+  nBins = segSites%/%8L + (segSites%%8L > 0L)
+  centromere = genLen/2
+  genMap = vector("list", nChr)
+  geno = vector("list", nChr)
+  for (i in 1:nChr) {
+    genMap[[i]] = seq(0, genLen[i], length.out = segSites[i])
+    geno[[i]] = array(sample(as.raw(0:255), nInd * ploidy * 
+                               nBins[i], replace = TRUE), dim = c(nBins[i], ploidy, 
+                                                                  nInd))
+    if (inbred) {
+      if (ploidy > 1) {
+        for (j in 2:ploidy) {
+          homozygous <- runif(nBins) < inbrCoef
+          geno[[i]][homozygous, j, ] = geno[[i]][homozygous, 1, ]
+        }
+      }
+    }
+  }
+  return(new("MapPop", nInd = nInd, nChr = nChr, ploidy = ploidy, 
+             nLoci = segSites, geno = as.matrix(geno), genMap = as.matrix(genMap), 
+             centromere = centromere))
 }

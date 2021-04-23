@@ -3,8 +3,8 @@
 ##################
 
 rm(list = ls())
-library('tidyverse')
 library('AlphaSimR')
+library('tidyverse')
 library('profvis')
 library('reshape2')
 library('viridis')
@@ -14,6 +14,7 @@ library('snow')
 library('doSNOW')
 library('foreach')
 library('data.table')
+library('patchwork')
 
 ###########################################
 ## ---- Gene drive simulation function ----
@@ -31,20 +32,24 @@ gd <- function(input){
   
   for (i in 1:ncol(input)) {assign(names(input)[i], input[,i])}
   
+  source(file = 'AlphaSimR_alt.R') # Altered AlphaSimR functions
+  
   # Initialise founder population
-  founderPop <- quickHaplo(nInd=(nInit+gd)*2, nChr=1, segSites=loci, genLen=0)
+  founderPop <- quickHaploInbr(nInd=nInit+gd, nChr=1, segSites=loci, inbred=inbred, inbrCoef=inbrCoef)
+  suppPop <- quickHaploInbr(nInd=supplement, nChr=1, segSites=loci, inbred=inbred, inbrCoef=inbrCoef)
+  if (gd > 0) {
+    founderPop@genMap[[1]][1:2] <- c(0,0)
+    suppPop@genMap[[1]][1:2] <- c(0,0)
+  }
   
   # Set model settings
   SP <- SimParam$new(founderPop)
   SP$addTraitA(nQtlPerChr=loci)
-  SP$setGender("yes_sys")
+  SP$setSexes("yes_sys")
   
   ######################
   ## ---- Functions ----
   ######################
-  
-  # Altered AlphaSimR functions
-  source(file = 'AlphaSimR_alt.R')
   
   initiateBroodcells <- function(years = 1, gaplength, gapday, broodbreak){
     broodcells <- read.delim("broodcells.csv", 
@@ -63,12 +68,7 @@ gd <- function(input){
   }
   
   invasionRate <- function(ratio){
-    invades <- (1 + exp(-(-2.87 + 0.00385*(ratio*10000))))^-1
-    return(invades)
-  }
-  
-  invasionRateAlt <- function(brood){
-    invades <- 1-exp(-(brood))
+    invades <- (1 + exp(-(invasionIntercept + invasionSlope*(ratio*10000))))^-1
     return(invades)
   }
   
@@ -77,7 +77,7 @@ gd <- function(input){
     workerPops <- c()
     
     assignedCells <- sample(1:(nDrones+nWorkers), pop@nInd, replace=TRUE, 
-                            prob = c(rep(8/9,nDrones),rep(1/9,nWorkers)))
+                            prob = c(rep(DCP/(DCP+1),nDrones),rep(1/(DCP+1),nWorkers)))
     
     for (cell in unique(assignedCells)){
       subpop <- pop[assignedCells == cell]
@@ -92,8 +92,8 @@ gd <- function(input){
   }
   
   assignMates <- function(pop){
-    if ("M" %in% pop@gender & "F" %in% pop@gender){
-      crossPlan <- randCrossDistr(pop, nCrosses = sum(pop@gender=="F"), simParam = SP)
+    if ("M" %in% pop@sex & "F" %in% pop@sex){
+      crossPlan <- randCrossDistr(pop, nCrosses = sum(pop@sex=="F"), simParam = SP)
       
       # log mate in second ebv column
       pop@ebv[crossPlan[,1],2] <- as.numeric(pop@id[crossPlan[,2]])
@@ -101,19 +101,24 @@ gd <- function(input){
     return(pop)
   }
   
-  reproduce <- function(pop, brood){
+  reproduce <- function(pop, brood, strategy){
     
-    if ("F" %in% pop@gender & "M" %in% pop@gender){ 
-      
-      # Homing
-      if (drive) {
-        pop <- homing(pop = pop)
-      }
-      
-      # Each female generates one haploid male offspring from an unfertilized egg
-      males <- makeDH(pop[pop@gender=="F"], nDH = 1, simParam = SP)
-      males@gender <- rep("M",males@nInd)
-      males@mother <- pop@id[pop@gender=="F"]
+    # Homing
+    if (drive) {
+      pop <- homing(pop = pop)
+    }
+    
+    # Each female generates one haploid male offspring from an unfertilized egg
+    infertiles <- reproductivity(pop, strategy)
+    mothers <- pop[pop@sex=="F" 
+                   & !(pop@id %in% infertiles) 
+                   & !(pop@ebv[,2] %in% infertiles)]
+    
+    if (mothers@nInd > 0){
+    
+      males <- makeDH(mothers, nDH = 1, simParam = SP)
+      males@sex <- rep("M",males@nInd)
+      males@mother <- mothers@id
       males <- prepEBVslots(males)
       
       # Determine the amount of female offspring distribution
@@ -124,33 +129,33 @@ gd <- function(input){
         nProgeny <- c(0,1,2,3) # worker brood
         probs <- c(0.46,0.35,0.17,0.02)
       }
-      nProgeny = sample(nProgeny, sum(pop@gender=="F"), prob = probs, replace = TRUE)
+      nProgeny = sample(nProgeny, mothers@nInd, prob = probs, replace = TRUE)
       
-      if (sum(nProgeny) == 0){
-        return(males)
-      }
+      crossPlan <- matrix(c(mothers@id,mothers@ebv[,2]),ncol=2)
       
-      crossPlan <- matrix(c(pop@id[pop@gender=="F"],pop@ebv[pop@gender=="F",2]),ncol=2)
-      
-      females <- makeCrossDistr(pop, crossPlan = crossPlan, nProgeny = nProgeny, simParam = SP)
-      females@gender <- rep("F",females@nInd)
-      females <- prepEBVslots(females)
-      females <- assignReproductionCycles(females)
-      
-      # Observe maximum amount of female offspring per cell
-      if (brood == "drone"){
-        if (females@nInd > (16 - males@nInd)){
-          females <- mortality(females, 1 - (16 - males@nInd) / females@nInd)
+      if (sum(nProgeny) > 0){
+        
+        females <- makeCrossDistr(pop, crossPlan = crossPlan, nProgeny = nProgeny, simParam = SP)
+        females@sex <- rep("F",females@nInd)
+        females <- prepEBVslots(females)
+        females <- assignReproductionCycles(females)
+        
+        # Observe maximum amount of female offspring per cell
+        if (brood == "drone"){
+          if (females@nInd > (maxDrone - males@nInd)){
+            females <- mortality(females, 1 - (maxDrone - males@nInd) / females@nInd)
+          }
+        } else if (brood == "worker") {
+          if (females@nInd > (maxWorker - males@nInd)){
+            females <- mortality(females, 1 - (maxWorker - males@nInd) / females@nInd)
+          }
         }
-      } else if (brood == "worker") {
-        if (females@nInd > (8 - males@nInd)){
-          females <- mortality(females, 1 - (8 - males@nInd) / females@nInd)
-        }
+        
+        females <- setBroodStatus(pop = females, brood = brood)
+        offspring <- mergePops(list(males,females))
+        
+        return(offspring)
       }
-      
-      offspring <- mergePops(list(males,females))
-      
-      return(offspring)
     }
   }
   
@@ -172,7 +177,7 @@ gd <- function(input){
   }
   
   prepEBVslots <- function(pop) {
-    pop@ebv <- matrix(rep(NA,3*pop@nInd), ncol = 3) # prep ebv slots
+    pop@ebv <- matrix(rep(NA,3*pop@nInd), ncol = 3)
     # slot 1: reproductive cycles
     # slot 2: mate id
     # slot 3: days remaining in brood
@@ -180,7 +185,7 @@ gd <- function(input){
   }
   
   assignReproductionCycles <- function(pop){
-    pop@ebv[pop@gender=="F",1] <- sample(1:4, sum(pop@gender=="F"), replace = TRUE)
+    pop@ebv[pop@sex=="F",1] <- sample(1:4, sum(pop@sex=="F"), replace = TRUE)
     return(pop)
   }
   
@@ -191,14 +196,11 @@ gd <- function(input){
   
   setBroodStatus <- function(pop, brood) {
     if (brood=="worker") {
-      pop@ebv[pop@gender=="F",3] = rep(12,sum(pop@gender=="F"))
-      #pop@ebv[pop@gender=="F",3] = round(rnorm(sum(pop@gender=="F"), mean = 20, sd = 1))
+      pop@ebv[pop@sex=="F",3] = rep(12,sum(pop@sex=="F"))
     } else if (brood=="drone") {
-      pop@ebv[pop@gender=="F",3] = rep(14,sum(pop@gender=="F"))
-      #pop@ebv[pop@gender=="F",3] = round(rnorm(sum(pop@gender=="F"), mean = 22, sd = 1))
+      pop@ebv[pop@sex=="F",3] = rep(14,sum(pop@sex=="F"))
     } else if (brood=="initial") {
-      pop@ebv[pop@gender=="F",3] = rep(0,sum(pop@gender=="F"))
-      #pop@ebv[pop@gender=="F",3] = sample(0,sum(pop@gender=="F"), replace = TRUE)
+      pop@ebv[pop@sex=="F",3] = rep(0,sum(pop@sex=="F"))
     }
     return(pop)
   }
@@ -224,32 +226,49 @@ gd <- function(input){
   initPop <- function(founderPop, nInit, gd, simParam = SP) {
     
     # Initialise mated female population
-    pop <- newPop(founderPop, simParam = simParam)
-    pop <- prepEBVslots(pop)
+    females <- newPop(founderPop, simParam = simParam)
+    females@sex <- rep("F",females@nInd)
+    females <- prepEBVslots(females)
     
-    broodPops <- list()
-    for (pair in seq(1,pop@nInd,2)){
-      broodPops <- c(broodPops, pop[pair:(pair+1)])
+    males <- makeDH(females, nDH = 1, simParam = simParam)
+    males@sex <- rep("M",males@nInd)
+    males <- prepEBVslots(males)
+    
+    #assign mates
+    females@ebv[,2] <- as.numeric(males@id)
+    
+    if (gd > 0) { # Initialise gene drive
+      
+      femalesGD <- females[1:gd]
+      malesGD <- males[1:gd]
+      
+      if (gdZygosity == "homozygous") {
+        femalesGD <- editGenomeFix(femalesGD, ind = 1:femalesGD@nInd, chr = rep(1, 2), segSites = 1:2, allele = 1, simParam = simParam)
+        malesGD <- editGenomeFix(malesGD, ind = 1:malesGD@nInd, chr = rep(1, 2), segSites = 1:2, allele = 1, simParam = simParam)
+      } else if (gdZygosity == "heterozygous") {
+        femalesGD <- editHaplo(femalesGD, ind = 1:femalesGD@nInd, chr = rep(1, 2), segSites = 1:2, allele = 1, haplotype = rep(1, 2), simParam = simParam)
+        femalesGD <- editHaplo(femalesGD, ind = 1:femalesGD@nInd, chr = rep(1, 2), segSites = 1:2, allele = 0, haplotype = rep(2, 2), simParam = simParam)
+        malesGD <- editGenomeFix(malesGD, ind = 1:malesGD@nInd, chr = rep(1, 2), segSites = 1:2, allele = 1, simParam = simParam)
+      }
+      
+      if (nInit > 0) {
+        females <- females[(gd+1):females@nInd]
+        males <- males[(gd+1):males@nInd]
+        
+        females <- editGenomeFix(females, ind = 1:females@nInd, chr = rep(1, 2), segSites = 1:2, allele = 0, simParam = simParam)
+        males <- editGenomeFix(males, ind = 1:males@nInd, chr = rep(1, 2), segSites = 1:2, allele = 0, simParam = simParam)
+        
+        pop <- mergePops(list(femalesGD, females, malesGD, males))
+      } else {
+        pop <- mergePops(list(femalesGD, malesGD))
+      }
+      
+    } else {
+      pop <- mergePops(list(females, males))
     }
-    broodPops <- lapply(broodPops, assignMates)
-    pop <- mergePops(broodPops); rm(broodPops)
     
     pop <- assignReproductionCycles(pop)
     pop <- setBroodStatus(pop,"initial")
-    
-    if (gd > 0) { # Initialise gene drive
-      pop <- editGenomeFix(pop, ind = 1:pop@nInd, chr = rep(1, pop@nLoci), segSites = 1:pop@nLoci, allele = 0, simParam = simParam)
-      popGD <- pop[(nInit*2+1):pop@nInd]
-      pop <- pop[1:(nInit*2)]
-  
-      popGDmales <- popGD[popGD@gender=="M"]
-      popGDfemales <- popGD[popGD@gender=="F"]
-  
-      popGDmales <- editGenomeFix(popGDmales, ind = 1:popGDmales@nInd, chr = rep(1, popGDmales@nLoci), segSites = 1:popGDmales@nLoci, allele = 1, simParam = simParam)
-      popGDfemales <- editHaplo(popGDfemales, ind = 1:popGDfemales@nInd, chr = rep(1, popGDfemales@nLoci), segSites = 1:popGDfemales@nLoci, allele = 1, haplotype = rep(1, popGDfemales@nLoci), simParam = simParam)
-  
-      pop <- mergePops(list(pop, popGDmales, popGDfemales))
-    }
     
     return(pop)
   }
@@ -264,17 +283,15 @@ gd <- function(input){
         qtl <- which(3:ncol(haplotype) == column)*2
         if (any(tmpHaplo[, 3] == "GD") & any(tmpHaplo[, 3] == "WT")){
           if (runif(1) < 0.95) { #does it cut?
-            if (runif(1) < 1-p_nhej) { #HDR if smaller than 0.98
-              #homing
+            if (runif(1) < 1-p_nhej) { #HDR if smaller than p_nhej
               pop <- editHaplo(pop = pop, 
                                ind = which(seq(1, nrow(haplotype), 2) == row), 
                                chr = rep(1, 2),
                                segSites = (qtl-1):qtl,
-                               allele = 1, #1 because it's the gene drive
+                               allele = 1, 
                                haplotype = which(tmpHaplo[,3] != "GD"),
                                simParam = simParam)
             } else if (runif(1) < 2/3) { #NHEJ, first check for frame shift
-              #change haplotype to NF (01)
               pop <- editHaplo(pop = pop, 
                                ind = which(seq(1, nrow(haplotype), 2) == row), 
                                chr = rep(1, 2),
@@ -283,7 +300,6 @@ gd <- function(input){
                                haplotype = which(tmpHaplo[,3] != "GD"), 
                                simParam = simParam)
             }  else {
-              #change haplotype to RE (10) 
               pop <- editHaplo(pop = pop, 
                                ind = which(seq(1, nrow(haplotype), 2) == row), 
                                chr = rep(1, 2),
@@ -299,36 +315,29 @@ gd <- function(input){
     return(pop)
   }
   
-  reproductivity <- function (pop, strategy = 1){
+  reproductivity <- function (pop, strategy){
     if (strategy == 1){ # Neutral gene drive
-      return(pop)
+      return(NULL)
     }
-    pop_m <- pop[pop@gender == "M"]
-    pop_f <- pop[pop@gender == "F"]
+    pop_m <- pop[pop@sex == "M"]
+    pop_f <- pop[pop@sex == "F"]
     if (strategy == 2){ # Male infertility
       haploDF <- createHaploDF(pop_m)
       haplo1 <- filter(haploDF, haplo == 1 & (locus1 == "GD" | locus1 == "NF")) %>%
         select(id)
       haplo2 <- filter(haploDF, haplo == 2 & (locus1 == "GD" | locus1 == "NF")) %>%
         select(id)
-      if (length(haplo1$id) > 0 & length(haplo2$id) > 0){
-        pop_m <- pop_m[pop_m@id != intersect(haplo1, haplo2)$id]
-        pop <- mergePops(list(pop_m, pop_f))
-      }
-      # filter out of pop
+      infertiles <- intersect(haplo1, haplo2)$id
+      
     } else if (strategy == 3) { # Female infertility
-      #horrible shit happens to the foundresses
       haploDF <- createHaploDF(pop_f)
       haplo1 <- filter(haploDF, haplo == 1 & (locus1 == "GD" | locus1 == "NF")) %>%
         select(id)
       haplo2 <- filter(haploDF, haplo == 2 & (locus1 == "GD" | locus1 == "NF")) %>%
         select(id)
-      if (length(haplo1$id) > 0 & length(haplo2$id) > 0){
-        pop_f <- pop_f[pop_f@id != intersect(haplo1, haplo2)$id]
-        pop <- mergePops(list(pop_m, pop_f))
-      }
+      infertiles <- intersect(haplo1, haplo2)$id
     }
-    return(pop)
+    return(infertiles)
   }
   
   #######################
@@ -352,8 +361,8 @@ gd <- function(input){
                    dimnames=list(days=broodcells$day,var=var))
 
   pop <- initPop(founderPop, nInit, gd, SP)
-  males <- pop[pop@gender=="M"]
-  pop <- pop[pop@gender=="F"]
+  males <- pop[pop@sex=="M"]
+  pop <- pop[pop@sex=="F"]
   
   for(day in 1:nrow(broodcells)){
     droneRep <- 0; workerRep <- 0; infestations <- 0
@@ -368,25 +377,24 @@ gd <- function(input){
     
     if (nDrones + nWorkers > 0){
       
-      # Select females who are available for infestation
-      reproductive <- pop@ebv[,3] <= 0
+      reproductive <- pop@ebv[,3] <= 0 # Select females who are in their dispersal phase
       
       infestations <- sum(runif(sum(reproductive)) < invasionRate((nWorkers + nDrones)/nAdults))
-      #infestations <- sum(runif(reproductive) < (nWorkers + nDrones)/nAdults)
       
       if (infestations > 0 & sum(reproductive) > 0) {
         
         if (sum(reproductive) > infestations) {
           enteringBrood <- sample(which(reproductive), infestations)
-          reproductive[-enteringBrood] <- FALSE
+          reproductive[-enteringBrood] <- FALSE; rm(enteringBrood)
         }
         
         nonReproductive <- pop[!reproductive]
         
         # Reproductive females pick drone or worker brood
-        broodPops <- enterBroodcells(pop[reproductive], nDrones, nWorkers); rm(pop)
+        broodPops <- enterBroodcells(pop[reproductive], nDrones, nWorkers); rm(pop); rm(reproductive)
         broodTypes <- c(rep("drone", length(broodPops[[1]])),rep("worker", length(broodPops[[2]])))
         
+        # save information about reproduction in the brood cells
         droneRep <- length(broodPops[[1]])
         workerRep <- length(broodPops[[2]])
         varroaPerDrone <- mean(sapply(broodPops[[1]], FUN = function(x) x@nInd))
@@ -398,32 +406,55 @@ gd <- function(input){
         broodPops <- sortMales(broodPops, males)
         
         # Produce offspring
-        offspring <- mapply(broodPops, FUN = reproduce, brood = broodTypes)
+        offspring <- mapply(broodPops, FUN = reproduce, brood = broodTypes, strategy = strategy)
+        
         broodPops <- lapply(broodPops, substractReproductionCycle)
-        
-        offspringPerDrone <- mean(sapply(offspring[broodTypes=="drone"], FUN = function(x) x[x@gender=="F"]@nInd))
-        offspringPerWorker <- mean(sapply(offspring[broodTypes=="worker"], FUN = function(x) x[x@gender=="F"]@nInd))
-        
-        # Determine how long each Varroa will remain in cell + phoretic stage
-        offspring <- mapply(offspring, FUN = setBroodStatus, brood = broodTypes)
         broodPops <- mapply(broodPops, FUN = setBroodStatus, brood = broodTypes)
+        broodPops <- mergePops(broodPops)
         
-        # Random mating within each cell
-        offspring <- lapply(offspring, assignMates)
+        if (length(compact(offspring)) > 0){
+          
+          offspringPerDrone <- mean(sapply(compact(offspring[broodTypes=="drone"]), FUN = function(x) x[x@sex=="F"]@nInd))
+          offspringPerWorker <- mean(sapply(compact(offspring[broodTypes=="worker"]), FUN = function(x) x[x@sex=="F"]@nInd))
+          offspring <- compact(offspring)
+          
+          # Random mating within each cell
+          offspring <- lapply(offspring, assignMates)
+          
+          # Emergence from brood cells
+          offspring <- mergePops(offspring)
+          males <- mergePops(list(males,offspring[offspring@sex=="M"]))
+          
+          broodPops <- mergePops(list(broodPops, offspring)); rm(offspring)
+        }
         
-        # Emergence from brood cells
-        pop <- mergePops(list(nonReproductive,
-                              mergePops(broodPops),
-                              mergePops(offspring))); rm(broodPops); rm(offspring)
+        pop <- mergePops(list(nonReproductive, broodPops)); rm(nonReproductive); rm(broodPops)
         
         # Females emerge from brood, store males until female produces offspring
-        males <- mergePops(list(males,pop[pop@gender=="M"]))
-        pop <- pop[pop@gender=="F"]
+        pop <- pop[pop@sex=="F"]
+
       }
     } 
     
-    # Some varroas die
+    # Death due to natural causes
     pop <- mortality(pop, mortality = mort)
+    
+    # Death due to acaricide treatment when pop too large
+    if (pop@nInd > 2405){
+      pop <- mortality(pop, mortality = acaricides)
+      
+      if (supplement > 0){
+        supplementPop <- initPop(suppPop, 0, supplement, simParam = SP)
+        
+        pop <- mergePops(list(pop,supplementPop[supplementPop@sex=="F"]))
+        males <- mergePops(list(males,supplementPop[supplementPop@sex=="M"]))
+      }
+    }
+    
+    # Check if there's still varroas left
+    if(sum(pop@ebv[,1]) == 0 | pop@nInd > 10000){
+      break
+    }
     
     # Track population values
     nInd          <- pop@nInd
@@ -460,10 +491,7 @@ gd <- function(input){
       results[day,v] <- get(x=v)
     }
     
-    if(sum(pop@ebv[,1]) == 0 | pop@nInd > 20000){
-      break
-    }
-  } # end of generation
+  } # end of day
   
   ###########################
   ## ---- Process output ----
