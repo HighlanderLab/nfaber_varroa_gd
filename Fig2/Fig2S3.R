@@ -94,30 +94,30 @@ PaperTheme <- theme_bw(base_size = 11, base_family = "sans") +
         legend.justification = "center",
         axis.title=element_text(size=12))
 
-haploRep <- rename(res, "GD init" = gd, "Homing" = drive, "GD/GD" = homoGD, "GD Heterozygotes" = heteroGD, "WT/WT" = homoWT, "Strategy" = strategy) %>%
+haploRep <- rename(res, "GD init" = gd, "Homing" = drive, "GD/GD" = homoGD, "GD Heterozygotes" = heteroGD, "WT/WT" = homoWT, "Strategy" = strategy, "Release" = gdZygosity) %>%
   pivot_longer(cols = `WT/WT`:`GD Heterozygotes`, names_to = "genotype", values_to = "count") 
 haploRep$genotype <- factor(haploRep$genotype, levels = c("WT/WT","GD Heterozygotes","GD/GD"))
 
 p1 <- ggplot(data = haploRep) + 
   geom_line(aes(x = day, y = count, group = interaction(genotype, iter), colour = genotype), size = 0.5, alpha = 0.5) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Genotype", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Genotype", guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,10*365,365)) +
-  facet_grid(gdZygosity ~ Strategy, labeller = label_value) +
+  facet_grid(Release ~ Strategy, labeller = label_both) +
   ylim(c(0, 10000)) +
   ylab("Individuals") +
   xlab("Day") +
   PaperTheme
 p1
 
-haploRep <- rename(res, "GD init" = gd, "Homing" = drive, "Strategy" = strategy) %>% 
+haploRep <- rename(res, "GD init" = gd, "Homing" = drive, "Strategy" = strategy, "Release" = gdZygosity) %>% 
   pivot_longer(cols = WT:RE, names_to = "allele", values_to = "frequency")
 haploRep$allele <- factor(haploRep$allele, levels = c("WT","GD","RE","NF"))
 
 p2 <- ggplot(data = haploRep) + 
   geom_line(aes(x = day, y = frequency, group = interaction(allele, iter), colour = allele), size = 0.5, alpha = 0.5) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Allele", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Allele", guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,5*365,365)) +
-  facet_grid(gdZygosity ~ Strategy, labeller = label_value) +
+  facet_grid(Release ~ Strategy, labeller = label_both) +
   ylab("Frequency") +
   xlab("Day") +
   PaperTheme

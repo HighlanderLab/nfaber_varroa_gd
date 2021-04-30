@@ -98,7 +98,7 @@ PaperTheme <- theme_bw(base_size = 11, base_family = "sans") +
 p1 <- ggplot(data = res) +
   geom_line(mapping = aes(x = day, y = nInd, colour = nInit, group = interaction(nInit,iter)), size = 0.5, alpha = 0.5) +
   geom_hline(yintercept=2405, linetype = "dashed", color = "red", size = 1) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
   ylim(c(0, NA)) +
   xlab("Day") +
   ylab("Population size") +
@@ -108,7 +108,7 @@ p1
 
 p2 <- ggplot(data = res) +
   geom_line(mapping = aes(x = day, y = IBS, colour = nInit, group = interaction(nInit,iter)), size = 0.5, alpha = 0.5) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
   ylim(c(0.5, NA)) +
   xlab("Day") +
   ylab("Mean homozygosity") +

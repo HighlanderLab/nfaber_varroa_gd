@@ -102,10 +102,10 @@ haploRep <- rename(res, "Brood availability" = broodbreak, "Start day" = gapday,
   mutate(GDHeterozygotes = `GD Heterozygotes` / nInd)
 
 p1 <- ggplot(data = haploRep) + 
-  geom_rect(mapping = aes(xmin = `Start day`, xmax = `Start day` + gaplength, ymin = -Inf, ymax = Inf), fill="lightgrey") +
+  geom_rect(mapping = aes(xmin = `Start day`, xmax = `Start day` + gaplength, ymin = -Inf, ymax = ifelse(`Brood availability`==1,-Inf,Inf)), fill="lightgrey") +
   geom_line(aes(x = day, y = GDHeterozygotes, group = interaction(nInit, iter), colour = nInit), size = 0.5, alpha = 0.5) +
   facet_grid(`Start day` ~ `Brood availability`, labeller = labeller(.cols = label_both, .rows = label_both)) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,2*365,365)) +
   ylab("GD heterozygote frequency") +
   xlab("Day") +
@@ -117,10 +117,10 @@ ggsave(plot = p1, path = "Fig4", filename = "Fig4.png", height = 15, width = 20,
 haploRep <- rename(res, "Brood availability" = broodbreak, "Start day" = gapday, "GD init" = gd, "Homing" = drive)
 
 p2 <- ggplot(data = haploRep) + 
-  geom_rect(mapping = aes(xmin = `Start day`, xmax = `Start day` + gaplength, ymin = -Inf, ymax = Inf), fill="lightgrey") +
+  geom_rect(mapping = aes(xmin = `Start day`, xmax = `Start day` + gaplength, ymin = -Inf, ymax = ifelse(`Brood availability`==1,-Inf,Inf)), fill="lightgrey") +
   geom_line(aes(x = day, y = GD, group = interaction(nInit, iter), colour = nInit), size = 0.5, alpha = 0.5) +
   facet_grid(`Start day` ~ `Brood availability`, labeller = labeller(.cols = label_both, .rows = label_both)) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,365,365)) +
   ylim(c(0,1)) +
   ylab("GD Frequency") +
@@ -128,16 +128,16 @@ p2 <- ggplot(data = haploRep) +
   PaperTheme
 p2
 
-ggsave(plot = p2, path = "Fig4", filename = "Fig4S1.png", height = 15, width = 20, unit = "cm")
+ggsave(plot = p2, path = "Fig4", filename = "Fig4S2.png", height = 15, width = 20, unit = "cm")
 
 res <- rename(res, "Brood availability" = broodbreak, "Start day" = gapday, "GD init" = gd, "Homing" = drive)
 
 p3 <- ggplot(data = res) + 
-  geom_rect(mapping = aes(xmin = `Start day`, xmax = `Start day` + gaplength, ymin = -Inf, ymax = Inf), fill="lightgrey") +
+  geom_rect(mapping = aes(xmin = `Start day`, xmax = `Start day` + gaplength, ymin = -Inf, ymax = ifelse(`Brood availability`==1,-Inf,Inf)), fill="lightgrey") +
   geom_line(aes(x = day, y = varroaPerDrone, group = interaction(nInit, iter), colour = nInit), size = 0.5, alpha = 0.5) +
   #geom_hline(yintercept=20) +
   facet_grid(`Start day` ~ `Brood availability`, labeller = labeller(.cols = label_both, .rows = label_both)) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Initial population size", guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,5*365,365)) +
   ylim(c(0,20)) +
   ylab("Average Varroa per drone cell") +
@@ -145,7 +145,7 @@ p3 <- ggplot(data = res) +
   PaperTheme
 p3
 
-ggsave(plot = p3, path = "Fig4", filename = "Fig4S2.png", height = 15, width = 20, unit = "cm")
+ggsave(plot = p3, path = "Fig4", filename = "Fig4S1.png", height = 15, width = 20, unit = "cm")
 
 ########################
 ## ---- Bonus plots ----

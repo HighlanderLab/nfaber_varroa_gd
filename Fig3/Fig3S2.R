@@ -102,8 +102,8 @@ haploRep$allele <- factor(haploRep$allele, levels = c("WT","GD","RE","NF"))
 p1 <- ggplot() + 
   geom_line(data = haploRep, aes(x = day, y = frequency, group = interaction(allele, iter), colour = allele), size = 0.5, alpha = 0.5) +
   facet_grid(. ~ `Initial GD`, labeller = labeller(.cols = label_both, .rows = label_both)) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Allele", guide=guide_legend(nrow=1, title.position = "top")) +
-  scale_fill_viridis(option="plasma", discrete=TRUE, name = "Allele",guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Allele", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_fill_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Allele",guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,2*365,365)) +
   ylab("Frequency") +
   xlab("Day") +
@@ -117,8 +117,8 @@ haploRep$genotype <- factor(haploRep$genotype, levels = c("WT/WT","GD Heterozygo
 p2 <- ggplot() + 
   geom_line(data = haploRep, aes(x = day, y = count, group = interaction(genotype, iter), colour = genotype), size = 0.5, alpha = 0.5) +
   facet_grid(. ~ `Initial GD`, labeller = labeller(.cols = label_both, .rows = label_both)) +
-  scale_colour_viridis(option="plasma", discrete=TRUE, name = "Genotype", guide=guide_legend(nrow=1, title.position = "top")) +
-  scale_fill_viridis(option="plasma", discrete=TRUE, name = "Genotype",guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_colour_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Genotype", guide=guide_legend(nrow=1, title.position = "top")) +
+  scale_fill_viridis(option="plasma", end=0.9, discrete=TRUE, name = "Genotype",guide=guide_legend(nrow=1, title.position = "top")) +
   scale_x_continuous(breaks=seq(0,2*365,365)) +
   ylab("Individuals") +
   xlab("Day") +
